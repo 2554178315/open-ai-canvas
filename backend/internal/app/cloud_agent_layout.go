@@ -203,7 +203,7 @@ func cloudAgentArrangeMode(value string) (layout.Mode, error) {
 	case "grid":
 		return layout.ModeGrid, nil
 	default:
-		return "", BadAuthRequest("整理模式无效：只能是 auto、flow、byType、row、column 或 grid")
+		return "", cloudAgentFieldError("mode", "invalid_value", "整理模式无效：只能是 auto、flow、byType、row、column 或 grid")
 	}
 }
 
@@ -214,7 +214,7 @@ func cloudAgentArrangeAlign(value string) (layout.AlignMode, error) {
 	case "left", "centerx", "right", "top", "centery", "bottom", "distributex", "distributey":
 		return layout.AlignMode(strings.ToLower(strings.TrimSpace(value))), nil
 	default:
-		return "", BadAuthRequest("对齐模式无效：只能是 left、centerX、right、top、centerY、bottom、distributeX 或 distributeY")
+		return "", cloudAgentFieldError("align", "invalid_value", "对齐模式无效：只能是 left、centerX、right、top、centerY、bottom、distributeX 或 distributeY")
 	}
 }
 
@@ -261,7 +261,7 @@ func cloudAgentArrangeScope(doc map[string]any, args cloudAgentArrangeArgs) ([]l
 	for _, id := range requested {
 		node, ok := byID[id]
 		if !ok {
-			return nil, nil, BadAuthRequest(fmt.Sprintf("要整理的节点 %s 不存在，请重新读取画布", id))
+			return nil, nil, cloudAgentFieldError("nodeIds", "invalid_value", fmt.Sprintf("要整理的节点 %s 不在当前画布，请重新读取画布", id))
 		}
 		if node.NoMove || !cloudAgentLayoutMovable(index[id]) {
 			skipped = append(skipped, id)
@@ -320,7 +320,7 @@ func cloudAgentArrangePositions(doc map[string]any, args cloudAgentArrangeArgs, 
 			bands = append(bands, layout.Band{Label: label, Nodes: members, Mode: groupMode})
 		}
 		if len(bands) == 0 {
-			return nil, nil, "", BadAuthRequest("分组里没有可整理的节点")
+			return nil, nil, "", cloudAgentFieldError("groups", "invalid_value", "分组里没有可整理的节点")
 		}
 		positions = layout.Bands(bands, args.Gap)
 	} else {
@@ -389,13 +389,13 @@ func prepareCloudAgentArrangeNodes(repo *repository.Repository, userID, canvasID
 		return nil, cloudAgentJSONArgumentError(err)
 	}
 	if strings.TrimSpace(args.SnapshotHash) == "" {
-		return nil, BadAuthRequest("整理节点需要先读取画布并传入 snapshotHash")
+		return nil, cloudAgentFieldError("snapshotHash", "required", "整理节点需要先读取画布并传入 snapshotHash")
 	}
 	if len(args.Groups) > cloudAgentArrangeMaxGroups {
-		return nil, BadAuthRequest(fmt.Sprintf("一次最多分成 %d 组", cloudAgentArrangeMaxGroups))
+		return nil, cloudAgentFieldError("groups", "item_count", fmt.Sprintf("一次最多分成 %d 组", cloudAgentArrangeMaxGroups))
 	}
 	if args.Gap < 0 || args.Gap > cloudAgentArrangeMaxGap {
-		return nil, BadAuthRequest(fmt.Sprintf("组间距必须在 0 到 %d 之间", cloudAgentArrangeMaxGap))
+		return nil, cloudAgentFieldError("gap", "invalid_value", fmt.Sprintf("组间距必须在 0 到 %d 之间", cloudAgentArrangeMaxGap))
 	}
 	canvas, err := repo.CanvasProjectForUser(userID, canvasID)
 	if err != nil {
@@ -419,10 +419,10 @@ func prepareCloudAgentArrangeNodes(repo *repository.Repository, userID, canvasID
 		return nil, err
 	}
 	if len(selected) < 2 {
-		return nil, BadAuthRequest("可整理的节点少于两个；单个节点请直接用 update_node 指定坐标")
+		return nil, cloudAgentFieldError("nodeIds", "invalid_value", "可整理的节点少于两个；单个节点请直接用 update_node 指定坐标")
 	}
 	if len(selected) > cloudAgentArrangeMaxNodes {
-		return nil, BadAuthRequest(fmt.Sprintf("一次最多整理 %d 个节点，请分批或用 nodeIds 指定范围", cloudAgentArrangeMaxNodes))
+		return nil, cloudAgentFieldError("nodeIds", "item_count", fmt.Sprintf("一次最多整理 %d 个节点，请分批或用 nodeIds 指定范围", cloudAgentArrangeMaxNodes))
 	}
 	positions, labels, mode, err := cloudAgentArrangePositions(doc, args, selected)
 	if err != nil {

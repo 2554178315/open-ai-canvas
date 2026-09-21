@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"infinite-canvas/backend/internal/canvas/layout"
@@ -228,11 +227,14 @@ func TestCloudAgentArrangeNodesRejectsStaleSnapshotAndTooManyNodes(t *testing.T)
 		many = append(many, layoutNode(fmt.Sprintf("text-%d", index), "text", float64(index), 0))
 	}
 	s2, doc2 := layoutFixture(t, many)
+	// 参数契约类错误同样按字段错误归类：模型因此拿到"哪个字段错、怎么改"的可纠正回执，
+	// 而不是被走准入失败分支判死整轮。
+	var countErr *cloudAgentFieldArgumentError
 	if _, err := applyCloudAgentArrangeNodes(s2.repo, "user", "layout-canvas", arrangeCall(t, map[string]any{
 		"snapshotHash": creationHash(doc2),
 		"mode":         "row",
-	}), mustRuntimePolicy(t, s2)); err == nil || !strings.Contains(err.Error(), "最多整理") {
-		t.Fatalf("超限应被拒绝：%v", err)
+	}), mustRuntimePolicy(t, s2)); !errors.As(err, &countErr) || countErr.Field != "nodeIds" || countErr.Issue != "item_count" {
+		t.Fatalf("超限应按 nodeIds/item_count 归类：%v", err)
 	}
 }
 

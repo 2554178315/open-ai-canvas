@@ -82,6 +82,18 @@ type cloudAgentRuntime struct {
 	TransientReferences    map[string]cloudAgentTransientReference `json:"transientReferences,omitempty"`
 	InterjectionIDs        []string                                `json:"interjectionIds,omitempty"`
 	Events                 []CloudAgentEvent                       `json:"events"`
+	// EmptyOutputEscalated 记录"空输出已经升级重试过几次"（关思考 + 放大输出预算）。
+	EmptyOutputEscalated int `json:"emptyOutputEscalated,omitempty"`
+	// StepTimeoutEscalated 记录"单步墙钟到点后已经关思考重试过几次"。
+	StepTimeoutEscalated int `json:"stepTimeoutEscalated,omitempty"`
+	// ForceThinkingOff 让本步请求强制关闭上游思考：思考模型偶发把整个输出预算花在推理上，
+	// 结果正文与工具调用皆空（实测 output_tokens 正好等于 maxOutputTokens）。
+	ForceThinkingOff bool `json:"forceThinkingOff,omitempty"`
+	// BoostStepOutputBudget 让本步请求使用放大后的输出预算（配合关思考重试）。
+	BoostStepOutputBudget bool `json:"boostStepOutputBudget,omitempty"`
+	// StepLimits 是本步实际生效的执行边界（管理员策略解析结果），只用于构造请求：
+	// 不进状态 JSON——每次推进都按当时的策略重新解析，改配置无需重发本轮。
+	StepLimits cloudAgentStepLimits `json:"-"`
 }
 
 type cloudAgentTransientReference struct {
@@ -105,7 +117,7 @@ func (s *Service) ensureCloudAgentExecution(task *model.Task, initial cloudAgent
 	canonical := input.Requests.Canonical
 	canonical.SystemPrompt = stripCloudAgentPlanBlock(canonical.SystemPrompt)
 	canonical.Messages = stripCloudAgentRuntimeContext(canonical.Messages)
-	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, CreativeAnchor: initial.CreativeAnchor, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Plan: initial.Plan, Events: []CloudAgentEvent{}}
+	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, CreativeAnchor: initial.CreativeAnchor, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Plan: initial.Plan, Events: []CloudAgentEvent{}, StepLimits: s.cloudAgentStepLimits()}
 	if len(initial.Skills) > 0 {
 		state.event(task.ID, "tool_completed", map[string]any{"toolName": "skills_load", "text": fmt.Sprintf("已启用 %d 个技能，正文将按需读取", len(initial.Skills))})
 	}
@@ -595,6 +607,8 @@ func (s *Service) advanceCloudAgent(run *model.CloudAgentExecution) (err error) 
 		}
 		return s.terminateCloudAgent(run, "Agent 运行状态损坏，本轮已停止")
 	}
+	// 单步边界每次推进都重新解析：管理员改配置后，正在跑的这一轮下一步就用新值。
+	state.StepLimits = s.cloudAgentStepLimits()
 	if state.ActiveTaskID != "" {
 		task, err := s.repo.TaskForUser(run.UserID, state.ActiveTaskID)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -652,8 +666,18 @@ func (s *Service) advanceCloudAgent(run *model.CloudAgentExecution) (err error) 
 		if task.Status != model.TaskStatusSucceeded && cloudAgentTruncatedToolArguments(task) {
 			return s.correctCloudAgentTruncatedCalls(run, &state)
 		}
-		if cloudAgentEmptyModelOutput(task) && state.EmptyOutputNudged < cloudAgentMaxEmptyOutputNudges {
-			return s.correctCloudAgentEmptyOutput(run, &state)
+		if cloudAgentEmptyModelOutput(task) {
+			if state.EmptyOutputNudged < cloudAgentMaxEmptyOutputNudges {
+				return s.correctCloudAgentEmptyOutput(run, &state)
+			}
+			// 催过仍然空：改为"关思考 + 放大输出预算"重试同一步，而不是把整轮判死。
+			if state.EmptyOutputEscalated < cloudAgentMaxEmptyOutputEscalations {
+				return s.correctCloudAgentEmptyOutputEscalation(run, &state)
+			}
+		}
+		// 单步墙钟到点同样是可恢复失败：关思考重试一次，而不是把整轮判死。
+		if cloudAgentStepTimedOut(task) && state.StepTimeoutEscalated < cloudAgentMaxStepTimeoutEscalations {
+			return s.correctCloudAgentStepTimeout(run, &state)
 		}
 		return s.repo.MutateCloudAgent(run.UserID, run.ID, run.Revision, func(current *model.CloudAgentExecution, repo *repository.Repository) error {
 			if task.Status != model.TaskStatusSucceeded {
@@ -726,7 +750,11 @@ func (s *Service) advanceCloudAgent(run *model.CloudAgentExecution) (err error) 
 		return contextErr
 	}
 	s.attachCloudAgentLessons(&canonical, run.UserID, cloudAgentLessonTaskText(&state))
-	input := map[string]any{"mode": "text", "prompt": state.Request.Prompt, "agentRequests": map[string]any{"canonical": canonical}, "config": map[string]any{"channelId": state.Request.ChannelID, "channelModelKey": state.Request.ChannelModelKey, "model": firstNonEmpty(state.Request.ChannelModelKey, state.Request.Model)}, "textOptions": map[string]any{"stream": true, "thinking": cloudAgentReasoningEnabled(state.Policy.ReasoningMode)}}
+	// 单步输出上限与思考开关：默认按策略给每一步带上界（不带上界时上游按剩余上下文放行，
+	// 思考模型可以把单步拖到几分钟）；空输出升级重试时改为关思考 + 放大预算。
+	stepThinking := cloudAgentReasoningEnabled(state.Policy.ReasoningMode) && !state.ForceThinkingOff
+	stepOutputTokens := cloudAgentStepOutputBudget(state.StepLimits, state.BoostStepOutputBudget)
+	input := map[string]any{"mode": "text", "prompt": state.Request.Prompt, "agentRequests": map[string]any{"canonical": canonical}, "config": map[string]any{"channelId": state.Request.ChannelID, "channelModelKey": state.Request.ChannelModelKey, "model": firstNonEmpty(state.Request.ChannelModelKey, state.Request.Model)}, "textOptions": map[string]any{"stream": true, "thinking": stepThinking, "maxOutputTokens": stepOutputTokens}}
 	tokens, tokenErr := cloudAgentRequestEstimatedTokens(&canonical)
 	if tokenErr != nil {
 		return s.failCloudAgent(run, &state, "模型上下文估算失败，请稍后重试")
@@ -861,6 +889,11 @@ func cloudAgentModelFailure(task *model.Task) (string, string) {
 	}
 	raw := strings.ToLower(task.Error)
 	switch {
+	case strings.Contains(task.Error, "没有返回内容"):
+		// 思考模型的典型失败：整个输出预算被推理吃掉，正文与工具调用皆空。
+		detail, reason = "上游连续返回空内容（通常是思考占满输出预算）；已自动关思考并放大预算重试仍失败，建议换用非思考模型或调小上下文", "model_empty_output"
+	case strings.Contains(task.Error, cloudAgentStepTimeoutError):
+		detail, reason = "单步模型调用超过执行时限仍未返回（长思考或上下文过大时常见）；已自动关思考重试仍超时，可在管理端调大 Agent 单步超时", "model_step_timeout"
 	case strings.Contains(raw, "connection reset by peer"):
 		detail, reason = "模型连接被对端或中间网络设备重置", "model_connection_reset"
 	case strings.Contains(raw, "timeout"), strings.Contains(raw, "deadline exceeded"):

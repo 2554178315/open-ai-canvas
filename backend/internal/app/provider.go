@@ -47,6 +47,10 @@ type canvasGenerationInput struct {
 type canvasTextOptions struct {
 	Stream   *bool `json:"stream"`
 	Thinking bool  `json:"thinking"`
+	// MaxOutputTokens 是本次调用的输出上限（思考 + 正文 + 工具参数）。
+	// 画布 Agent 的每一步都带上限：不设时上游按"剩余上下文"放行，思考模型可以把单步
+	// 拖到几分钟（实测 output_tokens 正好吃满可用预算、正文与工具调用皆空）；0 表示不限制。
+	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
 }
 
 type agentToolRequests struct {

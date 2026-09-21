@@ -139,6 +139,14 @@ function parseStoryboardRowsPayload(raw: string): { title?: string; rows?: Array
             }
         }
     }
+    if (parsed.text && typeof parsed.text === "object") {
+        try {
+            const nested = parseStoryboardRowsPayload(JSON.stringify(parsed.text));
+            if (Array.isArray(nested.rows)) return nested;
+        } catch {
+            // 对象形式的 text 不是分镜载荷时，交由统一缺行校验报错。
+        }
+    }
     return parsed;
 }
 
@@ -146,7 +154,9 @@ export function storyboardRowsFromTask(task: GenerationTask) {
     const result = parseStoryboardRowsPayload(task.resultJson || "{}");
     if (!Array.isArray(result.rows) || !result.rows.length) throw new Error("分镜任务没有返回镜头行");
     return {
-        title: result.title?.trim(),
+        // 旧任务和部分模型会把 title 返回成对象/数组；恢复路径必须只接受字符串，
+        // 否则可选链只能防 undefined，仍会在对象上调用 trim 使整页恢复失败。
+        title: typeof result.title === "string" ? result.title.trim() : undefined,
         rows: result.rows.map((row, index) => {
             const next = createStoryboardRow(index + 1, {
                 ...row,

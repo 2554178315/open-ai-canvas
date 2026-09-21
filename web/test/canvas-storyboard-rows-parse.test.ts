@@ -44,6 +44,17 @@ describe("storyboardRowsFromTask", () => {
         expect(storyboardRowsFromTask(task).rows).toHaveLength(1);
     });
 
+    test("title 不是字符串时仍可恢复任务结果", () => {
+        const task = storyboardTask(JSON.stringify({ title: { value: "章节" }, rows: [{ shotNumber: 1, plotDescription: "单镜头" }] }));
+        expect(storyboardRowsFromTask(task).title).toBeUndefined();
+        expect(storyboardRowsFromTask(task).rows).toHaveLength(1);
+    });
+
+    test("text 为结构化对象时仍可解析分镜行", () => {
+        const task = storyboardTask(JSON.stringify({ text: { title: "章节", rows: [{ shotNumber: 1, plotDescription: "单镜头" }] } }));
+        expect(storyboardRowsFromTask(task).rows).toHaveLength(1);
+    });
+
     test("text 内层不是 JSON 时抛出缺行错误", () => {
         // 无契约时期模型返回 Markdown 表格的真实场景。
         const task = storyboardTask(JSON.stringify({ mode: "text", text: "| 7-41 | 全景/拉远 | 桃园结义 |" }));

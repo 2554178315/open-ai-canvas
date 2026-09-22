@@ -143,11 +143,11 @@ func skillSearchTestPackWithCards() cloudAgentSkill {
 		Name:        "shortform-drama-playbook",
 		Description: "当写 3 分钟以内反转短剧的分镜脚本时调用。核心能力：钩子/因果/反转收束。",
 		Files: map[string]string{
-			cloudAgentSkillEntryPath:        "",
-			"cards/czks-hook-paywall.md":    "",
-			"cards/ssqr-twist-ending.md":    "",
-			"cards/sushi-reveal-punch.md":   "",
-			"cards/dxj-short-drama.md":      "",
+			cloudAgentSkillEntryPath:         "",
+			"cards/czks-hook-paywall.md":     "",
+			"cards/ssqr-twist-ending.md":     "",
+			"cards/sushi-reveal-punch.md":    "",
+			"cards/dxj-short-drama.md":       "",
 			"cards/czks-structure-rhythm.md": "",
 		},
 	}

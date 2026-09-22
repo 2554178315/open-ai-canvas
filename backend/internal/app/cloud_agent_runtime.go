@@ -1217,6 +1217,12 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 					if err == nil {
 						preview = batchPlan.Preview
 					}
+				case "canvas_arrange_nodes":
+					arrangePlan, err := prepareCloudAgentArrangeNodes(repo, run.UserID, state.Request.CanvasID, call)
+					mutationErr = err
+					if err == nil {
+						preview = arrangePlan.Preview
+					}
 				default:
 					canvasPlan, err := prepareCloudAgentCanvasMutation(repo, run.UserID, state.Request.CanvasID, call)
 					mutationErr = err
@@ -1305,6 +1311,8 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 			}
 		case call.Function.Name == "canvas_apply_ops":
 			result, toolErr = applyCloudAgentCanvas(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
+		case call.Function.Name == "canvas_arrange_nodes":
+			result, toolErr = applyCloudAgentArrangeNodes(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
 		case call.Function.Name == "canvas_create_storyboard", call.Function.Name == "canvas_edit_storyboard":
 			result, toolErr = applyCloudAgentStoryboardMutation(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
 		case call.Function.Name == "canvas_edit_batch_table":

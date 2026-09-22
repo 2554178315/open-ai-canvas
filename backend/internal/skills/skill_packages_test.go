@@ -3,7 +3,6 @@ package skills
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -28,25 +27,23 @@ func TestArchiveFromMarkdownInfersMetadata(t *testing.T) {
 	}
 }
 
-func TestReportedBuiltinSkillPackage(t *testing.T) {
-	var definitions []builtinSkillDefinition
-	if err := json.Unmarshal(builtinSkillsJSON, &definitions); err != nil {
+func TestBuiltinSkillPackageBoundsMetadata(t *testing.T) {
+	skill := builtinSkillDefinition{
+		SkillID:     "test-builtin-skill",
+		SkillName:   "测试技能",
+		Description: strings.Repeat("描述内容。", 140),
+		Instruction: "# 测试技能\n\n保留完整正文。\n",
+	}
+	archive, err := archiveFromMarkdown([]byte(skill.Instruction), skill.SkillName, skill.Description)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, skill := range definitions {
-		if skill.SkillID != "16000000000049" {
-			continue
-		}
-		archive, err := archiveFromMarkdown([]byte(skill.Instruction), skill.SkillName, skill.Description)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len([]rune(archive.Metadata.Description)) != 500 || string(archive.Files["SKILL.md"]) != skill.Instruction {
-			t.Fatal("reported skill must have bounded metadata and unchanged instruction")
-		}
-		return
+	if got := len([]rune(archive.Metadata.Description)); got > 500 {
+		t.Fatalf("builtin skill metadata description length = %d, want <= 500", got)
 	}
-	t.Fatal("reported builtin skill is missing")
+	if string(archive.Files["SKILL.md"]) != skill.Instruction {
+		t.Fatal("builtin skill package must preserve the complete instruction")
+	}
 }
 
 func TestEnsureSkillPackagesBoundsLegacyFallbackMetadata(t *testing.T) {

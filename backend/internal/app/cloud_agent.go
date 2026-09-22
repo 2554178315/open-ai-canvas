@@ -403,7 +403,7 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 		}
 		history = append(history, providerTextMessage{Role: "assistant", Content: text})
 		if strings.TrimSpace(context) != "" {
-			history = append(history, providerTextMessage{Role: "user", Content: context})
+			history = append(history, providerTextMessage{Role: "user", Content: context, AgentContextSource: "continuation"})
 		}
 	}
 	history = trimCloudAgentTextHistory(history, cloudAgentHistoryKeepRounds, cloudAgentHistoryMaxBytes)
@@ -487,7 +487,12 @@ func cloudAgentLegacyHistory(messages []map[string]interface{}, currentPrompt st
 		if !ok || role != []string{"user", "assistant"}[index%2] {
 			return nil
 		}
-		history = append(history, providerTextMessage{Role: role, Content: content})
+		// 来源标记必须一起搬：丢了它，旧会话里的运行时交接消息会被当成真人轮次参与裁剪。
+		message := providerTextMessage{Role: role, Content: content}
+		if source, ok := messages[index][cloudAgentContextSourceKey].(string); ok && source != "" && source != "runtime" {
+			message.AgentContextSource = source
+		}
+		history = append(history, message)
 	}
 	return history
 }

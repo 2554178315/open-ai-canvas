@@ -26,6 +26,12 @@ func TestCloudAgentPolicyRegistersSkillSearchAlongsideReadFile(t *testing.T) {
 			t.Fatalf("tool without function: %v", tool)
 		}
 		names[fn["name"].(string)] = true
+		if fn["name"] == "skill_search" {
+			parameters := fn["parameters"].(map[string]any)
+			if required, ok := parameters["required"].([]string); ok && len(required) > 0 {
+				t.Fatalf("index lookup must allow an empty argument object: %v", required)
+			}
+		}
 	}
 	if !names["skill_read_file"] || !names["skill_search"] {
 		t.Fatalf("skill tools not registered together: %v", names)

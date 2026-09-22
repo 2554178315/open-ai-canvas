@@ -25,12 +25,11 @@ type cloudAgentStepLimits struct {
 	Timeout time.Duration
 }
 
-// cloudAgentStepLimits 解析当前生效的单步边界。策略读取失败时退回出厂默认值：
-// 拿到一个确定的上界，好过让一次调用无限跑下去。
-func (s *Service) cloudAgentStepLimits() cloudAgentStepLimits {
+// cloudAgentStepLimits 解析当前生效的单步边界；读取失败不得放宽管理员策略。
+func (s *Service) cloudAgentStepLimits() (cloudAgentStepLimits, error) {
 	policy, err := s.runtimeConcurrencySetting()
 	if err != nil {
-		policy = defaultRuntimePolicy().Task
+		return cloudAgentStepLimits{}, err
 	}
 	limits := cloudAgentStepLimits{OutputTokens: policy.AgentStepMaxOutputTokens}
 	if policy.AgentStepTimeoutSeconds > 0 {
@@ -38,12 +37,11 @@ func (s *Service) cloudAgentStepLimits() cloudAgentStepLimits {
 	} else {
 		limits.Timeout = time.Duration(policy.TextTimeoutMinutes) * time.Minute
 	}
-	return limits
+	return limits, nil
 }
 
 // cloudAgentStepOutputBudget 把生效上限折算成本步请求要带的 maxOutputTokens：
-// 放大档（空输出升级重试）在原值上翻倍并以硬上限封顶；原值为 0（不限制）时用兜底值，
-// 让重试仍然有界。
+// 空输出重试不能突破管理员配置的上限；只有原值为 0（不限制）时使用有界的重试预算。
 func cloudAgentStepOutputBudget(limits cloudAgentStepLimits, boosted bool) int {
 	if !boosted {
 		return limits.OutputTokens
@@ -51,5 +49,5 @@ func cloudAgentStepOutputBudget(limits cloudAgentStepLimits, boosted bool) int {
 	if limits.OutputTokens <= 0 {
 		return cloudAgentStepBoostFallbackTokens
 	}
-	return min(limits.OutputTokens*2, platform.MaxRuntimeAgentStepOutputTokens)
+	return min(limits.OutputTokens, platform.MaxRuntimeAgentStepOutputTokens)
 }

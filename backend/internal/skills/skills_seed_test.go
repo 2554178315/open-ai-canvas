@@ -49,8 +49,8 @@ func TestBuiltinSeedSyncPreservesUserState(t *testing.T) {
 			community++
 		}
 	}
-	if community != 72 {
-		t.Fatalf("community skills = %d, want 72", community)
+	if community != 35 {
+		t.Fatalf("community skills = %d, want 35", community)
 	}
 	if err := svc.EnsureBuiltinSkills(); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestBuiltinSeedSyncPreservesUserState(t *testing.T) {
 	if err := svc.EnsureSkillPackages(); err != nil {
 		t.Fatal(err)
 	}
-	state := model.UserSkillState{ID: "test-state", UserID: "test-user", SkillID: "16000000000001", Added: true, Liked: true}
+	state := model.UserSkillState{ID: "test-state", UserID: "test-user", SkillID: "16000000000081", Added: true, Liked: true}
 	if err := db.Create(&state).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -110,11 +110,11 @@ func TestBuiltinSeedSyncPreservesUserState(t *testing.T) {
 			t.Fatalf("skill %s package instruction was changed", item.ID)
 		}
 	}
-	list, err := svc.Skills("test-user", SkillListRequest{Scope: "public", Search: "freestyle-template-match"})
+	list, err := svc.Skills("test-user", SkillListRequest{Scope: "public", Search: "shortform-drama-playbook"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if list.TotalCount != 1 || len(list.Skills) != 1 || list.Skills[0].SkillID != "16000000000003" {
+	if list.TotalCount != 1 || len(list.Skills) != 1 || list.Skills[0].SkillID != "16000000000081" {
 		t.Fatalf("community skill not visible in public search: %#v", list)
 	}
 }

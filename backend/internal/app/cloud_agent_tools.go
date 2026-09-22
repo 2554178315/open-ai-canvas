@@ -22,6 +22,7 @@ import (
 type cloudAgentSkill struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
 	Version     string            `json:"version"`
 	Hash        string            `json:"hash"`
 	Instruction string            `json:"instruction,omitempty"`
@@ -60,7 +61,9 @@ func (s *Service) cloudAgentSkills(userID string, ids []string) ([]cloudAgentSki
 		}
 		// Skill content is loaded only after the model explicitly calls
 		// skill_read_file; keep the run context to stable metadata and paths.
-		snapshot := cloudAgentSkill{ID: id, Name: skill.SkillName, Version: skill.VersionID, Hash: skill.ContentHash, Files: map[string]string{cloudAgentSkillEntryPath: ""}}
+		// The description is public metadata (market listing) and lets the
+		// model route between activated skills without reading any body.
+		snapshot := cloudAgentSkill{ID: id, Name: skill.SkillName, Description: skill.Description, Version: skill.VersionID, Hash: skill.ContentHash, Files: map[string]string{cloudAgentSkillEntryPath: ""}}
 		files, err := s.SkillPackageFiles(userID, id)
 		if err != nil {
 			return nil, err

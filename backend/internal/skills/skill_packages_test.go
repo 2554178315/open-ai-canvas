@@ -3,6 +3,7 @@ package skills
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -24,6 +25,73 @@ func TestArchiveFromMarkdownInfersMetadata(t *testing.T) {
 	}
 	if string(archive.Files["SKILL.md"]) == "" || archive.ContentHash == "" {
 		t.Fatal("archive did not preserve the entry file or compute a hash")
+	}
+}
+
+func TestReportedBuiltinSkillPackage(t *testing.T) {
+	var definitions []builtinSkillDefinition
+	if err := json.Unmarshal(builtinSkillsJSON, &definitions); err != nil {
+		t.Fatal(err)
+	}
+	for _, skill := range definitions {
+		if skill.SkillID != "16000000000049" {
+			continue
+		}
+		archive, err := archiveFromMarkdown([]byte(skill.Instruction), skill.SkillName, skill.Description)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len([]rune(archive.Metadata.Description)) != 500 || string(archive.Files["SKILL.md"]) != skill.Instruction {
+			t.Fatal("reported skill must have bounded metadata and unchanged instruction")
+		}
+		return
+	}
+	t.Fatal("reported builtin skill is missing")
+}
+
+func TestEnsureSkillPackagesBoundsLegacyFallbackMetadata(t *testing.T) {
+	for _, source := range []int{3, skillSourceUser} {
+		db, err := gorm.Open(sqlite.Open("file:"+kernel.NewID()+"?mode=memory&cache=shared"), &gorm.Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = sqlDB.Close() })
+		if err := db.AutoMigrate(&model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
+			t.Fatal(err)
+		}
+		svc := New(repository.New(db), t.TempDir(), nil)
+		skill := model.Skill{ID: kernel.NewID(), Name: strings.Repeat("名", 81), Description: strings.Repeat("文", 503), Instruction: "## 旧技能\n", Status: skillStatusEnabled, Source: source}
+		if err := db.Create(&skill).Error; err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if err := svc.EnsureSkillPackages(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		assertSkillVersionCount(t, db, skill.ID, 1)
+		var saved model.Skill
+		if err := db.First(&saved, "id = ?", skill.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if saved.Name != skill.Name || saved.Description != skill.Description || saved.Instruction != skill.Instruction {
+			t.Fatal("migration changed original skill fields")
+		}
+		version, err := svc.repo.SkillVersion(saved.CurrentVersionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := svc.readSkillArchiveEntry(version, "SKILL.md")
+		if err != nil || string(body) != skill.Instruction {
+			t.Fatalf("original instruction not preserved: %v", err)
+		}
+	}
+	if _, err := archiveFromMarkdown([]byte("## 旧技能\n"), strings.Repeat("名", 81), strings.Repeat("文", 503)); err == nil {
+		t.Fatal("non-migration archive input must still reject oversized fallback metadata")
 	}
 }
 

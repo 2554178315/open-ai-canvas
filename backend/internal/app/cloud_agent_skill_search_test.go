@@ -137,6 +137,87 @@ func TestCloudAgentSkillSearchToleratesStraySkillIDArgument(t *testing.T) {
 	}
 }
 
+func skillSearchTestPackWithCards() cloudAgentSkill {
+	return cloudAgentSkill{
+		ID:          "p1",
+		Name:        "shortform-drama-playbook",
+		Description: "当写 3 分钟以内反转短剧的分镜脚本时调用。核心能力：钩子/因果/反转收束。",
+		Files: map[string]string{
+			cloudAgentSkillEntryPath:         "",
+			"cards/czks-hook-paywall.md":     "",
+			"cards/ssqr-twist-ending.md":     "",
+			"cards/sushi-reveal-punch.md":    "",
+			"cards/dxj-short-drama.md":       "",
+			"cards/czks-structure-rhythm.md": "",
+		},
+	}
+}
+
+func TestCloudAgentSkillSearchReturnsCardPathWhenSlugHits(t *testing.T) {
+	// 卡级检索的核心契约：命中卡片时直接返回卡路径，Agent 不必先读 SKILL.md 总纲。
+	result, err := cloudAgentSearchSkills([]cloudAgentSkill{skillSearchTestPackWithCards()}, "hook", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := result["matches"].([]map[string]any)
+	if len(matches) != 1 {
+		t.Fatalf("expected one hit, got %v", matches)
+	}
+	if matches[0]["path"] != "cards/czks-hook-paywall.md" {
+		t.Fatalf("expected card path, got %v", matches[0]["path"])
+	}
+	if matches[0]["score"].(int) < 4 {
+		t.Fatalf("card hit must score at least 4, got %v", matches[0]["score"])
+	}
+}
+
+func TestCloudAgentSkillSearchChineseKeywordSkipsStraightToCardIndex(t *testing.T) {
+	// 中文关键词打不到英文卡名（czks-hook-paywall 之类），此时必须下发卡索引，
+	// 让 Agent 能直奔某张卡而不必先读总纲——这才是「找到该读的那张卡」的兜底路径。
+	result, err := cloudAgentSearchSkills([]cloudAgentSkill{skillSearchTestPackWithCards()}, "反转", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := result["matches"].([]map[string]any)
+	if len(matches) != 1 {
+		t.Fatalf("expected one hit, got %v", matches)
+	}
+	if matches[0]["path"] != cloudAgentSkillEntryPath {
+		t.Fatalf("expected entry path fallback, got %v", matches[0]["path"])
+	}
+	cards, ok := matches[0]["cards"].([]string)
+	if !ok || len(cards) != 5 {
+		t.Fatalf("expected full card index of 5, got %v", matches[0]["cards"])
+	}
+	if matches[0]["cardCount"].(int) != 5 {
+		t.Fatalf("expected cardCount 5, got %v", matches[0]["cardCount"])
+	}
+}
+
+func TestCloudAgentSkillSearchCardIndexRespectsBudget(t *testing.T) {
+	// 大包不能把上下文撑爆：卡索引跨条目共享预算，且永远不超过预算总量。
+	big := cloudAgentSkill{ID: "b1", Name: "big-pack", Description: "覆盖大量卡片的包", Files: map[string]string{cloudAgentSkillEntryPath: ""}}
+	for i := 0; i < 30; i++ {
+		big.Files["cards/card-"+"abcdefghij"[i%10:]+"-"+"0123456789"[i%10:]+".md"] = ""
+	}
+	result, err := cloudAgentSearchSkills([]cloudAgentSkill{big, big}, "卡片", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, m := range result["matches"].([]map[string]any) {
+		if cards, ok := m["cards"].([]string); ok {
+			total += len(cards)
+		}
+	}
+	if total > cloudAgentSkillSearchCardBudget {
+		t.Fatalf("card index exceeded budget: %d > %d", total, cloudAgentSkillSearchCardBudget)
+	}
+	if total == 0 {
+		t.Fatal("expected some card paths to be served")
+	}
+}
+
 func TestCloudAgentSkillSearchSnippetHandlesMultibyteHitOffset(t *testing.T) {
 	// 回归：曾把 strings.Index 的字节偏移当成 []rune 的下标使用，中文描述里
 	// 关键词越靠后、字节偏移越远超 rune 数，start 未夹紧 →

@@ -279,6 +279,9 @@ export type AdminOSSSetting = {
     region: string;
     endpoint: string;
     cdnBaseUrl: string;
+    cdnAuthMode: "" | "public" | "qiniu" | string;
+    requireCDN: boolean;
+    allowPrivateProxy: boolean;
     bucket: string;
     accessKeyId: string;
     accessKeySecret?: string;

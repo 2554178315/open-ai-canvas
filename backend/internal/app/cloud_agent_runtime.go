@@ -950,6 +950,20 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 		if !ok || detail == nil {
 			detail = map[string]any{}
 		}
+		// 模型漏了必填字段（或参数不是对象）时，即便业务校验抛的是普通 AppError，也按
+		// "参数契约错误"处理：把本轮实际暴露的 schema 回给模型，它才改得对。
+		// 只在业务侧确实按参数问题拒绝（400/422）时套用：上游 5xx 或网络错误即便同时漏字段，
+		// 也该算上游故障，别把锅扣到参数上。已分类的参数错误不再套壳，避免覆盖更精确的反馈。
+		var appErr *AppError
+		var existingArgumentErr *cloudAgentArgumentError
+		if missing := cloudAgentMissingRequiredArguments(state.Canonical.Tools, call); len(missing) > 0 &&
+			!errors.As(err, &existingArgumentErr) &&
+			errors.As(err, &appErr) && appErr != nil && (appErr.Status == 400 || appErr.Status == 422) {
+			err = &cloudAgentFieldArgumentError{
+				error: &cloudAgentArgumentError{err},
+				Field: strings.Join(missing, ","), Issue: "required",
+			}
+		}
 		message := cloudAgentSafeToolError(err)
 		detail["error"] = message
 		var admissionErr *cloudAgentMediaAdmissionError
@@ -978,6 +992,16 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 			if call.Function.Name == "canvas_apply_ops" {
 				detail["exampleArguments"] = map[string]any{"snapshotHash": "<canvas_get_state.snapshotHash>", "ops": []any{map[string]any{"type": "add_node", "id": "<new-node-id>", "nodeType": "text", "content": "<content>"}}}
 			}
+		}
+		// 稳定归类 + 可行动字段：只加标注，不改任何放行/拒绝判定。
+		// allowed 与执行器用的是同一份判定（cloudAgentToolAllowed 是纯函数，结果一致）。
+		if class, retryable, requiredAction := cloudAgentToolErrorClass(state.Request, call, err, cloudAgentToolAllowed(state.Request, call.Function.Name)); class != "" {
+			detail["errorClass"], detail["errorClassLabel"] = class, cloudAgentToolErrorLabel(class)
+			detail["retryable"] = retryable
+			if requiredAction != "" {
+				detail["requiredAction"] = requiredAction
+			}
+			payload["errorClass"] = class
 		}
 		result = detail
 		kind = "tool_failed"
@@ -1173,7 +1197,13 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		var toolErr error
 		switch {
 		case !allowed:
-			toolErr = BadAuthRequest("工具未获本轮权限授权")
+			// 幻觉出来的工具名与"真被权限挡住"要分开反馈：前者模型根本不该发这个调用，
+			// 后者是授权边界问题。两者仍然一律拒绝，只是给模型的下一步更明确。
+			if !cloudAgentPlatformToolNames()[call.Function.Name] {
+				toolErr = BadAuthRequest("模型调用了不存在的工具「" + truncateRunes(call.Function.Name, 60) + "」，本轮已拒绝；请只使用本轮工具表里列出的工具")
+			} else {
+				toolErr = BadAuthRequest("工具未获本轮权限授权")
+			}
 		case call.Function.Name == "canvas_apply_ops":
 			result, toolErr = applyCloudAgentCanvas(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
 		case call.Function.Name == "canvas_create_storyboard", call.Function.Name == "canvas_edit_storyboard":

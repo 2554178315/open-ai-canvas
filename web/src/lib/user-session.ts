@@ -13,6 +13,8 @@ import { imageSizeConfigWithPresets } from "@/lib/image-size-presets";
 import { useUserStore } from "@/stores/use-user-store";
 import { PLUGIN_STORE_KEY, usePluginStore } from "@/stores/use-plugin-store";
 import { initializeRemoteUserDataSession, installRemoteUserDataAutoSync, resetRemoteUserDataSync, withRemoteUserDataSyncExclusive } from "@/services/user-data-sync";
+import { clearResourceAccessCache } from "@/services/api/resources";
+import { clearResourceBlobCache } from "@/services/resource-blob-cache";
 import { withGenerationConsumersPaused } from "@/services/generation-consumer-lifecycle";
 
 export async function switchUserStorageScope(userId?: string | null) {
@@ -20,6 +22,8 @@ export async function switchUserStorageScope(userId?: string | null) {
         await withRemoteUserDataSyncExclusive(async () => {
             await Promise.all([flushCanvasStorePersistence(), flushAssetStorePersistence()]);
             resetRemoteUserDataSync();
+            clearResourceAccessCache();
+            clearResourceBlobCache();
             setActiveUserScope(userId);
         });
     });

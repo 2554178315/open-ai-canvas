@@ -21,8 +21,12 @@ RUN bun --bun ./node_modules/vite/bin/vite.js build
 # 运行镜像：nginx 托管静态前端，并在 Compose 中把 /api 转发到后端服务。
 FROM nginx:1.27-alpine
 
-COPY --from=web-build /app/web/dist /usr/share/nginx/html
+COPY --from=web-build /app/web/dist /opt/canvas-release
+COPY docker/canvas-web-entrypoint.sh /usr/local/bin/canvas-web-entrypoint
+RUN chmod +x /usr/local/bin/canvas-web-entrypoint
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+ENTRYPOINT ["/usr/local/bin/canvas-web-entrypoint"]
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1

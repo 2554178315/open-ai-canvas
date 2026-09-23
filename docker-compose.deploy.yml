@@ -74,6 +74,9 @@ services:
     image: ghcr.io/ddcat-ai/open-ai-canvas-web:${CANVAS_IMAGE_TAG:-latest}
     ports:
       - "${CANVAS_HTTP_PORT:-3000}:3000"
+    volumes:
+      # Keep hashed chunks from the current and previous web releases for old tabs.
+      - ${CANVAS_WEB_DATA_PATH:-web-data}:/usr/share/nginx/html
     depends_on:
       backend:
         condition: service_healthy
@@ -83,3 +86,4 @@ volumes:
   backend-data:
   postgres-data:
   redis-data:
+  web-data:

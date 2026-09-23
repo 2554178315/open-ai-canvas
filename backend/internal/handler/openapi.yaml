@@ -114,6 +114,15 @@ paths:
         "200": {description: 标准信封 data 为完整工具}
         "400": {description: 参数无效或预览资源不符合要求}
         "401": {description: 未登录}
+  /skills/presets:
+    get:
+      tags: [canvas]
+      security: []
+      summary: 获取公开场景技能预设目录
+      responses:
+        "200":
+          description: 标准信封 data 为 presets 数组；预设只引用公开且启用的种子技能
+        "500": {$ref: "#/components/responses/Error"}
   /tools/{id}:
     parameters:
       - {in: path, name: id, required: true, schema: {type: integer, format: int64, minimum: 1}}

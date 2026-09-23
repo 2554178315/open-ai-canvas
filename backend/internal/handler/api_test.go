@@ -23,6 +23,7 @@ func TestRegisterCanvasAPIExposesOpenAPIAndProjects(t *testing.T) {
 		"POST /api/tasks/:id/recover-media": false,
 		"GET /api/resources":                false,
 		"GET /api/skills/presets":           false,
+		"GET /api/agent/skills/usage":       false,
 	}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path

@@ -393,15 +393,11 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 		if err != nil {
 			return nil, err
 		}
-		// The user's goal survives a failed first model call too. Tool facts are
-		// context, not authorization to replay a write or charge a second time.
-		history = append(history, providerTextMessage{Role: "user", Content: parent.Prompt})
-		for _, message := range parentState.Canonical.Messages {
-			if stringField(message, cloudAgentContextSourceKey) == "user_interjection" {
-				history = append(history, providerTextMessage{Role: "user", Content: stringField(message, "content")})
-			}
-		}
-		history = append(history, providerTextMessage{Role: "assistant", Content: text})
+		// 压缩时 TextHistory 与 Canonical 长度相同；压缩后本轮仍可能继续回答或收到插话。
+		// 只补压缩边界之后的内容，不能重复原始要求，也不能丢掉最终回复。
+		history = cloudAgentContinuationHistory(history, parentState, parent.Prompt, text)
+		// 事实交接帧不能因为压缩而缺席：长会话恰恰最需要它，而且"别重复提交收费任务"的
+		// 依据只在这份帧里（它带的是上一轮真实的工具结果与画布改动）。
 		if strings.TrimSpace(context) != "" {
 			history = append(history, providerTextMessage{Role: "user", Content: context, AgentContextSource: "continuation"})
 		}
@@ -493,6 +489,40 @@ func cloudAgentLegacyHistory(messages []map[string]interface{}, currentPrompt st
 			message.AgentContextSource = source
 		}
 		history = append(history, message)
+	}
+	return history
+}
+
+func cloudAgentContinuationHistory(history []providerTextMessage, state cloudAgentRuntime, prompt, reply string) []providerTextMessage {
+	if !state.HistoryIncludesCurrent {
+		// The user's goal survives a failed first model call too. Tool facts are
+		// context, not authorization to replay a write or charge a second time.
+		history = append(history, providerTextMessage{Role: "user", Content: prompt})
+		for _, message := range state.Canonical.Messages {
+			if stringField(message, cloudAgentContextSourceKey) == "user_interjection" {
+				history = append(history, providerTextMessage{Role: "user", Content: stringField(message, "content")})
+			}
+		}
+		return append(history, providerTextMessage{Role: "assistant", Content: reply})
+	}
+	// TextHistory 是压缩瞬间的 canonical 快照；之后只有 canonical 会追加模型回复。
+	// 终态取消/失败可能没有新回复，不能拿压缩前的最后一条 assistant 伪装成新回复。
+	after := state.Canonical.Messages[len(state.TextHistory):]
+	for _, message := range after {
+		if stringField(message, cloudAgentContextSourceKey) == "user_interjection" {
+			history = append(history, providerTextMessage{Role: "user", Content: stringField(message, "content")})
+		}
+	}
+	if strings.TrimSpace(reply) != "" {
+		for i := len(after) - 1; i >= 0; i-- {
+			message := after[i]
+			if stringField(message, "role") == "assistant" && stringField(message, "content") == reply {
+				if _, hasCalls := message["tool_calls"]; !hasCalls {
+					history = append(history, providerTextMessage{Role: "assistant", Content: reply})
+				}
+				break
+			}
+		}
 	}
 	return history
 }

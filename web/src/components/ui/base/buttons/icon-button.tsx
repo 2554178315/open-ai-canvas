@@ -19,7 +19,12 @@ import { cn } from "@/lib/utils";
  * 明暗：全部颜色走 token；active 按压底用 bg-surface-active，明暗自动适配。
  */
 export const iconButtonVariants = cva(
-    ["inline-flex shrink-0 items-center justify-center rounded-md", "outline-none focus-visible:outline-none data-[input-modality=keyboard]:focus-visible:ring-2 data-[input-modality=keyboard]:focus-visible:ring-ring", "disabled:pointer-events-none disabled:opacity-45", "motion-safe:active:scale-[0.96]"],
+    [
+        "inline-flex shrink-0 items-center justify-center rounded-md",
+        "outline-none focus-visible:outline-none data-[input-modality=keyboard]:focus-visible:ring-2 data-[input-modality=keyboard]:focus-visible:ring-ring",
+        "disabled:pointer-events-none disabled:opacity-45",
+        "motion-safe:active:scale-[0.96]",
+    ],
     {
         variants: {
             variant: {

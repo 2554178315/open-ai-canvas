@@ -1038,10 +1038,7 @@ function formatContextBytes(bytes: number | undefined) {
 }
 
 function AgentContextRing({ view }: { view: AgentContextUsageView }) {
-    const reducedMotion = useReducedMotion();
     const [open, setOpen] = useState(false);
-    const radius = 15;
-    const circumference = 2 * Math.PI * radius;
     const marker = view.compactRatio && view.compactRatio > 0 && view.compactRatio < 1 ? view.compactRatio : undefined;
     const percent = view.ratio === undefined ? view.label : `${Math.round(view.ratio * 100)}%`;
     const meterLabel = view.ratio === undefined ? "—" : percent;
@@ -1147,20 +1144,15 @@ function AgentContextRing({ view }: { view: AgentContextUsageView }) {
                 title="查看上下文用量"
                 onPointerDown={(event) => event.stopPropagation()}
             >
-                <span className="agent-context-ring-visual" aria-hidden="true">
-                    <svg viewBox="0 0 40 40">
-                        <circle className="agent-context-ring-track" cx="20" cy="20" r={radius} />
-                        <circle
-                            className="agent-context-ring-value"
-                            cx="20"
-                            cy="20"
-                            r={radius}
-                            strokeDasharray={`${circumference} ${circumference}`}
-                            strokeDashoffset={circumference * (1 - view.ring)}
-                            style={{ transition: reducedMotion ? "none" : undefined }}
-                        />
-                        {marker ? <circle className="agent-context-ring-marker" cx="20" cy={20 - radius} r="1.35" transform={`rotate(${marker * 360} 20 20)`} /> : null}
-                    </svg>
+                <span
+                    className="agent-context-ring-visual"
+                    aria-hidden="true"
+                    style={{
+                        "--agent-context-progress": `${view.ring * 100}%`,
+                        "--agent-context-marker-angle": `${(marker || 0) * 360}deg`,
+                    } as CSSProperties}
+                >
+                    {marker ? <span className="agent-context-ring-marker" /> : null}
                 </span>
                 <span className="agent-context-meter-copy">
                     <strong>{meterLabel}</strong>

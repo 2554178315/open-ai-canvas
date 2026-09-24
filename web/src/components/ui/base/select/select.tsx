@@ -56,7 +56,7 @@ export const Select = forwardRef<RefSelectProps, SelectProps>(function Select({ 
                 onKeyDown?.(event);
             }}
             onFocus={(event) => {
-                setInputModality((current) => current === "unknown" ? "keyboard" : current);
+                setInputModality((current) => (current === "unknown" ? "keyboard" : current));
                 onFocus?.(event);
             }}
             onBlur={(event) => {

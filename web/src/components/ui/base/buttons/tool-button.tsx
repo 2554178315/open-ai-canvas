@@ -21,7 +21,12 @@ import { cn } from "@/lib/utils";
  * 明暗：全部颜色走 token；active 用按压底语义 token，明暗自动适配。
  */
 export const toolButtonVariants = cva(
-    ["inline-flex select-none items-center justify-center gap-1.5 rounded-md px-3", "font-medium transition-colors", "outline-none focus-visible:outline-none data-[input-modality=keyboard]:focus-visible:ring-2 data-[input-modality=keyboard]:focus-visible:ring-ring", "disabled:pointer-events-none disabled:opacity-45"],
+    [
+        "inline-flex select-none items-center justify-center gap-1.5 rounded-md px-3",
+        "font-medium transition-colors",
+        "outline-none focus-visible:outline-none data-[input-modality=keyboard]:focus-visible:ring-2 data-[input-modality=keyboard]:focus-visible:ring-ring",
+        "disabled:pointer-events-none disabled:opacity-45",
+    ],
     {
         variants: {
             variant: {

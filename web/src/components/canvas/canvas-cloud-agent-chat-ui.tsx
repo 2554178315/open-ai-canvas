@@ -735,6 +735,7 @@ export function AgentChatComposer({
     onAddFiles,
     onRemoveAttachment,
     left,
+    submitAccessory,
     onStop,
     stopping,
     references = [],
@@ -755,6 +756,8 @@ export function AgentChatComposer({
     onAddFiles?: (files: FileList | File[] | null) => void | Promise<void>;
     onRemoveAttachment?: (id: string) => void;
     left?: ReactNode;
+    /** 发送按钮左侧的附属控件，例如上下文用量环。 */
+    submitAccessory?: ReactNode;
     /** 供「@」插入的画布节点/素材/技能引用候选（可选，默认空，缺省时退化为普通输入框） */
     references?: CanvasResourceReference[];
     /** 供「/」弹出的技能候选（可选） */
@@ -1020,12 +1023,7 @@ export function AgentChatComposer({
                         {left}
                     </div>
                     <div className="agent-composer-submit flex items-center gap-2">
-                        {disabled ? null : (
-                            <span className="agent-composer-send-hint">
-                                <span className="agent-composer-send-hint-full">{canStop ? "运行中：发送即插话，下一步生效" : "Enter 发送 · Shift+Enter 换行"}</span>
-                                <span className="agent-composer-send-hint-compact">{canStop ? "运行中可插话" : "Enter 发送"}</span>
-                            </span>
-                        )}
+                        {submitAccessory}
                         {canStop ? (
                             <motion.button
                                 type="button"
